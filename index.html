@@ -1,160 +1,44 @@
-<!DOCTYPE html><html><head><base target="_top"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>
-:root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#f3f6f3;color:#14291e}*{box-sizing:border-box}body{margin:0}header{background:#112a23;color:white;padding:22px 18px}header>div,main{max-width:640px;margin:auto}h1{margin:0;letter-spacing:.05em;font-size:27px}header p{color:#bed6c8;margin:5px 0;font-size:13px}main{padding:14px 12px 55px}.panel{background:white;border-radius:16px;padding:18px;margin-bottom:13px;box-shadow:0 2px 10px #112a230a}h2{font-size:18px;margin:0 0 12px}label{display:block;font-weight:650;font-size:13px;margin:13px 0 6px}input,select,textarea{width:100%;padding:12px;border:1px solid #c8d6ce;border-radius:9px;font:inherit;font-size:16px;background:white}textarea{min-height:80px;resize:vertical}.pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{border:0;border-radius:10px;padding:12px 15px;font-size:14px;font-weight:700;cursor:pointer}.primary{background:#276a4a;color:white;width:100%;margin-top:16px}.secondary{background:#e5efe8;color:#194a35}.toolbar{display:flex;gap:8px;align-items:center;justify-content:space-between}.entry{border-top:1px solid #e7eee9;padding:14px 0;overflow-wrap:anywhere}.entry:first-child{border:0}.entry p{margin:5px 0;font-size:13px}.entry small{color:#687e70}.entry a{color:#206d4b}.entry select{font-size:13px;width:auto;padding:7px;margin-top:8px}.muted{color:#6a8071;font-size:12px}#message{font-size:13px;min-height:20px;margin-top:8px}.good{color:#276a4a}.bad{color:#a42f2f}.linkbtn{background:none;color:#276a4a;padding:5px;float:right}
-</style></head><body><header><div><h1>Tackled.</h1><p>Mobile capture · synced to your Google Sheet</p></div></header><main><section class="panel"><h2>Quick capture</h2><form id="form"><label for="type">Capture type</label><select id="type"><option>Source clip</option><option>Video idea</option><option>Article</option><option>Graphic idea</option><option>Research note</option><option>Other</option></select><label for="idea">Link or idea</label><textarea id="idea" required placeholder="Paste a YouTube link or jot down an idea"></textarea><button type="button" class="linkbtn" id="paste">Paste clipboard</button><label for="project">Video project</label><select id="project"><option value="">Unassigned / new idea</option></select><div class="pair"><div><label for="start">Start timestamp</label><input id="start" placeholder="02:14"></div><div><label for="end">End timestamp</label><input id="end" placeholder="02:40"></div></div><label for="notes">Notes / how to use it</label><textarea id="notes" placeholder="Strong defensive recovery; use in chapter 3"></textarea><button type="submit" id="save" class="primary">Save to cloud</button><div id="message" role="status"></div></form></section><section class="panel"><div class="toolbar"><h2>Saved sources</h2><button class="secondary" id="refresh">Refresh</button></div><p class="muted">Latest 300 entries · Edit projects in the Projects sheet · All records are in Google Sheets</p><label for="libraryProject">Filter by project</label><select id="libraryProject"><option value="all">All projects</option></select><label for="librarySearch">Search sources and notes</label><input id="librarySearch" placeholder="Search the latest 300 captures"><div id="entries">Loading…</div></section></main><script>
-(function () {
-  'use strict';
-  function el(id) { return document.getElementById(id); }
-  function message(text, ok) {
-    el('message').textContent = text;
-    el('message').className = ok ? 'good' : 'bad';
-  }
-  function failure(error) {
-    message(error && error.message ? error.message : String(error), false);
-  }
-  function text(parent, tag, value) {
-    var child = document.createElement(tag);
-    child.textContent = value == null ? '' : String(value);
-    parent.appendChild(child);
-    return child;
-  }
-  var cachedCaptures = [];
-  function render(list) {
-    list = (list || []).filter(function(item) {
-      var project = el('libraryProject').value;
-      var query = el('librarySearch').value.toLowerCase().trim();
-      return (project === 'all' || item.project === project) && (!query || [item.idea,item.notes,item.projectName,item.type].join(' ').toLowerCase().indexOf(query) >= 0);
-    });
-    var area = el('entries');
-    area.textContent = '';
-    if (!list || !list.length) {
-      text(area, 'p', 'No captures yet.');
-      return;
-    }
-    list.forEach(function (item) {
-      var row = document.createElement('div');
-      row.className = 'entry';
-      text(row, 'strong', (item.type || 'Source') + ' · ' + (item.projectName || 'Unassigned'));
-      text(row, 'small', item.date || '');
-      text(row, 'p', item.idea || '');
-      var link = String(item.idea || '').trim();
-      if (link.indexOf('https://') === 0 || link.indexOf('http://') === 0) {
-        var a = text(row, 'a', 'Open source');
-        a.href = link;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-      }
-      text(row, 'p', [item.start ? 'Start ' + item.start : '', item.end ? 'End ' + item.end : '', item.notes || ''].filter(Boolean).join(' · '));
-      var select = document.createElement('select');
-      select.setAttribute('data-id', item.id || '');
-      ['Saved', 'Downloaded', 'In edit', 'Used', 'Archived'].forEach(function (status) {
-        var option = document.createElement('option');
-        option.value = status;
-        option.textContent = status;
-        option.selected = item.status === status;
-        select.appendChild(option);
-      });
-      row.appendChild(select);
-      area.appendChild(row);
-    });
-  }
-  function load() {
-    google.script.run.withSuccessHandler(function(list) { cachedCaptures = list || []; render(cachedCaptures); }).withFailureHandler(failure).captures();
-  }
-  var sharedProject = '';
-  function loadProjects() {
-    google.script.run.withSuccessHandler(function (projects) {
-      (projects || []).forEach(function (project) {
-        var option = document.createElement('option');
-        option.value = project.id;
-        option.textContent = project.id + ' · ' + project.name;
-        el('project').appendChild(option);
-        var filterOption = document.createElement('option');
-        filterOption.value = project.id;
-        filterOption.textContent = project.id + ' · ' + project.name;
-        el('libraryProject').appendChild(filterOption);
-      });
-      if (sharedProject) el('project').value = sharedProject;
-    }).withFailureHandler(failure).projects();
-  }
-  el('form').addEventListener('submit', function (event) {
-    event.preventDefault();
-    var save = el('save');
-    save.disabled = true;
-    message('Saving…', true);
-    var record = {
-      type: el('type').value,
-      idea: el('idea').value,
-      project: el('project').value,
-      start: el('start').value,
-      end: el('end').value,
-      notes: el('notes').value
-    };
-    google.script.run.withSuccessHandler(function () {
-      save.disabled = false;
-      message('Saved to Google Sheets ✓', true);
-      el('idea').value = '';
-      el('start').value = '';
-      el('end').value = '';
-      el('notes').value = '';
-      load();
-    }).withFailureHandler(function (error) {
-      save.disabled = false;
-      failure(error);
-    }).saveCapture(record);
-  });
-  el('entries').addEventListener('change', function (event) {
-    var target = event.target;
-    if (!target || !target.hasAttribute('data-id')) return;
-    target.disabled = true;
-    google.script.run.withSuccessHandler(function () {
-      target.disabled = false;
-    }).withFailureHandler(function (error) {
-      target.disabled = false;
-      failure(error);
-    }).updateStatus(target.getAttribute('data-id'), target.value);
-  });
-  el('refresh').addEventListener('click', load);
-  el('libraryProject').addEventListener('change', function() { render(cachedCaptures); });
-  el('librarySearch').addEventListener('input', function() { render(cachedCaptures); });
-  el('paste').addEventListener('click', function () {
-    if (!navigator.clipboard || !navigator.clipboard.readText) {
-      message('Long-press the link field and select Paste.', false);
-      return;
-    }
-    navigator.clipboard.readText().then(function (value) {
-      el('idea').value = value;
-    }).catch(function () {
-      message('Long-press the link field and select Paste.', false);
-    });
-  });
-  // Google Apps Script runs the interface inside a sandboxed iframe.
-  // google.script.url retrieves the ORIGINAL /exec URL's query parameters.
-  function applySharedParameters(params) {
-    if (!params) return;
-    if (params.text || params.url) el('idea').value = params.text || params.url;
-    if (params.type) {
-      var types = el('type').options;
-      for (var i = 0; i < types.length; i++) {
-        if (types[i].value === params.type) el('type').value = params.type;
-      }
-    }
-    if (params.start) el('start').value = params.start;
-    if (params.end) el('end').value = params.end;
-    if (params.notes) el('notes').value = params.notes;
-    if (params.project) {
-      sharedProject = params.project;
-      el('project').value = sharedProject;
-    }
-  }
-  if (typeof google !== 'undefined' && google.script && google.script.url) {
-    google.script.url.getLocation(function (location) {
-      applySharedParameters(location && location.parameter);
-    });
-  } else {
-    var params = new URLSearchParams(window.location.search);
-    applySharedParameters(Object.fromEntries(params.entries()));
-  }
-  loadProjects();
-  load();
-}());
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#102b22"><link rel="manifest" href="manifest.webmanifest"><title>Tackled. | Capture</title>
+<style>
+:root{font:16px system-ui,-apple-system,Segoe UI,sans-serif;color:#153124;background:#f2f6f2}*{box-sizing:border-box}body{margin:0}header{background:#102b22;color:#fff;padding:22px 18px 20px}header>div,main{max-width:680px;margin:auto}h1{font-size:30px;margin:0;letter-spacing:-.6px}header p{font-size:13px;color:#bbd4c5;margin:5px 0 0}main{padding:14px 12px 40px}.panel{background:#fff;border-radius:17px;padding:18px;margin-bottom:14px;box-shadow:0 2px 12px #0c2c1810}h2{font-size:18px;margin:0 0 12px}.tabs{display:flex;gap:8px;margin-bottom:14px}.tabs button{flex:1;background:#e3ede6;color:#28573d}.tabs button.active{background:#1d6242;color:white}label{display:block;font-size:13px;font-weight:650;margin:13px 0 6px}input,textarea,select{font:inherit;font-size:16px;width:100%;padding:12px;border:1px solid #c7d7cb;border-radius:10px;background:white;color:#153124}textarea{min-height:88px;resize:vertical}.pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{border:0;border-radius:10px;padding:12px 14px;font:inherit;font-size:14px;font-weight:700;cursor:pointer}.primary{background:#27734e;color:white;width:100%;margin-top:14px}.secondary{background:#e3efe7;color:#20573a}.outline{background:white;border:1px solid #b5cdbb;color:#245d3f}.hint{font-size:12px;line-height:1.5;color:#627c6b}.notice{font-size:13px;min-height:18px;color:#245c3d;margin-top:10px}.item{border-top:1px solid #e5eee8;padding:14px 0;overflow-wrap:anywhere}.item:first-child{border-top:0}.item p{font-size:14px;margin:6px 0;white-space:pre-wrap}.item small{color:#6a7f70}.actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.actions button{font-size:12px;padding:9px 11px}.tag{display:inline-block;background:#e8f1ea;border-radius:6px;padding:3px 7px;font-size:11px;font-weight:700;color:#2b6849}.tag.sent{background:#d8f1df}.tag.pending{background:#fff1d8;color:#8a611e}.muted{color:#6c8271}.hidden{display:none!important}.row{display:flex;align-items:center;justify-content:space-between;gap:10px}.row h2{margin:0}.search{margin-top:10px}.empty{padding:12px;color:#6c8271;font-size:14px}a{color:#206d4b}
+</style></head><body><header><div><h1>Tackled<span style="color:#8bd6a8">.</span></h1><p>Football ideas, sources and clips — from phone to production</p></div></header><main>
+<div class="tabs"><button id="tabCapture" class="active" type="button">+ Capture</button><button id="tabLibrary" type="button">Source library</button><button id="tabSettings" type="button">Settings</button></div>
+<section id="captureView" class="panel"><h2>Quick capture</h2><p class="hint">Share from YouTube or WhatsApp. Save to Google Sheets in one action, or keep an offline copy.</p><form id="captureForm"><label for="type">Capture type</label><select id="type"><option>Source clip</option><option>Video idea</option><option>Article</option><option>Graphic idea</option><option>Research note</option><option>Other</option></select><label for="idea">Source link or idea</label><textarea id="idea" required placeholder="Paste or share a video, article, or idea"></textarea><label for="project">Video project</label><select id="project"><option value="">Unassigned / new idea</option><option value="VID-001">VID-001 · Ferguson / Glazers</option><option value="VID-002">VID-002 · Next-gen defenders</option><option value="VID-003">VID-003 · Zlatan</option><option value="VID-004">VID-004 · Forgotten players</option><option value="VID-005">VID-005 · Scott McTominay</option></select><div class="pair"><div><label for="start">Start timestamp</label><input id="start" placeholder="02:14"></div><div><label for="end">End timestamp</label><input id="end" placeholder="02:40"></div></div><label for="notes">Notes / how to use</label><textarea id="notes" placeholder="Which chapter? What makes this clip useful?"></textarea><button id="saveCloud" type="submit" class="primary">Save to Google Sheets</button><button id="saveLocal" type="button" class="secondary" style="width:100%;margin-top:8px">Save on this device only</button><div class="notice" id="captureNotice" role="status"></div></form></section>
+<section id="libraryView" class="panel hidden"><div class="row"><h2>Source library</h2><span class="hint" id="libraryCount"></span></div><p class="hint">Saved captures on this phone, organised by project. Cloud-only records are available in the Google Sheets cloud library.</p><label for="filterProject">Project</label><select id="filterProject"><option value="all">All projects</option></select><label for="filterType">Type</label><select id="filterType"><option value="all">All types</option><option>Source clip</option><option>Video idea</option><option>Article</option><option>Graphic idea</option><option>Research note</option><option>Other</option></select><input id="search" class="search" placeholder="Search clips, notes and ideas" aria-label="Search sources"><div class="actions"><button id="openCloudLibrary" class="secondary" type="button">Open full cloud library</button><button id="export" class="outline" type="button">Export backup</button></div><div id="items"></div></section>
+<section id="settingsView" class="panel hidden"><h2>Google Sheets connection</h2><p class="hint">Paste the same working Apps Script /exec URL you used previously. Your Google account must be authorised to use the cloud app.</p><label for="cloud">Apps Script web app URL</label><input id="cloud" type="url" placeholder="https://script.google.com/macros/s/.../exec"><button class="secondary" type="button" id="saveSettings" style="margin-top:10px">Save connection</button><p class="notice" id="settingsNotice"></p><h2 style="margin-top:24px">Projects</h2><p class="hint">The project dropdown contains your five initial projects. Add or rename projects in the Google Sheets Projects tab; the cloud library reads those directly. The phone's quick-capture dropdown can be updated in a future release.</p><h2 style="margin-top:24px">How saving works</h2><p class="hint">Save to Google Sheets opens a secure Google Apps Script submission and receipt. Tap “Return to Tackled.” after success to mark the local item as synced. If you close the receipt, the item stays marked pending and you can safely retry; duplicate submissions are ignored. This is not background sync.</p></section>
+</main>
+<script>
+(function(){'use strict';
+var $=function(id){return document.getElementById(id);};
+var STORAGE='tackled-shares', CLOUD='tackled-cloud', items=[];
+try{var old=JSON.parse(localStorage.getItem(STORAGE)||'[]');items=Array.isArray(old)?old:[];}catch(e){items=[];}
+items.forEach(function(x){if(!x.id)x.id='cap_'+Math.random().toString(36).slice(2)+Date.now().toString(36);if(!x.sync)x.sync='local';});
+function persist(){localStorage.setItem(STORAGE,JSON.stringify(items));}
+function escapeHtml(x){return String(x==null?'':x).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');}
+function getCloud(){return $('cloud').value.trim();}
+function validCloud(u){try{var p=new URL(u);return p.protocol==='https:'&&p.hostname==='script.google.com'&&p.pathname.startsWith('/macros/s/')&&p.pathname.endsWith('/exec');}catch(e){return false;}}
+function notice(id,s){$(id).textContent=s;}
+function show(view){['capture','library','settings'].forEach(function(x){$(x+'View').classList.toggle('hidden',x!==view);$('tab'+x[0].toUpperCase()+x.slice(1)).classList.toggle('active',x===view);});if(view==='library')render();}
+$('tabCapture').onclick=function(){show('capture');};$('tabLibrary').onclick=function(){show('library');};$('tabSettings').onclick=function(){show('settings');};
+$('cloud').value=localStorage.getItem(CLOUD)||'';
+$('saveSettings').onclick=function(){var u=getCloud();if(u&&!validCloud(u)){notice('settingsNotice','Enter the complete Apps Script /exec URL.');return;}localStorage.setItem(CLOUD,u);notice('settingsNotice','Connection saved on this device.');};
+var shared=new URLSearchParams(location.search), received=[shared.get('url'),shared.get('text'),shared.get('title')].filter(Boolean).join('\n');
+if(received){$('idea').value=received;show('capture');}
+var synced=shared.get('synced');if(synced){var found=items.find(function(x){return x.id===synced;});if(found){found.sync='synced';persist();notice('captureNotice','Saved to Google Sheets ✓');}history.replaceState(null,'',location.pathname);}
+function readForm(){return {id:'cap_'+Date.now().toString(36)+Math.random().toString(36).slice(2,10),date:new Date().toISOString(),type:$('type').value,idea:$('idea').value.trim(),project:$('project').value,start:$('start').value.trim(),end:$('end').value.trim(),notes:$('notes').value.trim(),sync:'local'};}
+function clearForm(){$('idea').value='';$('start').value='';$('end').value='';$('notes').value='';}
+function submitCloud(r){var u=getCloud();if(!validCloud(u)){show('settings');notice('settingsNotice','Add your working Google Apps Script URL first. The capture is safely stored on this device.');return;}
+var form=document.createElement('form');form.method='POST';form.action=u;form.style.display='none';var payload={action:'saveCapture',captureId:r.id,type:r.type,idea:r.idea,project:r.project,start:r.start,end:r.end,notes:r.notes};Object.keys(payload).forEach(function(k){var input=document.createElement('input');input.type='hidden';input.name=k;input.value=payload[k]||'';form.appendChild(input);});document.body.appendChild(form);form.submit();}
+$('captureForm').onsubmit=function(e){e.preventDefault();var r=readForm();if(!r.idea)return;items.unshift(r);persist();submitCloud(r);};
+$('saveLocal').onclick=function(){var r=readForm();if(!r.idea){notice('captureNotice','Add a source link or idea first.');return;}items.unshift(r);persist();clearForm();notice('captureNotice','Saved on this device. You can send it to the cloud from the source library.');};
+var opts=$('project').options;for(var i=0;i<opts.length;i++){if(opts[i].value){var op=document.createElement('option');op.value=opts[i].value;op.textContent=opts[i].textContent;$('filterProject').appendChild(op);}}
+function render(){var p=$('filterProject').value,t=$('filterType').value,q=$('search').value.toLowerCase().trim();var visible=items.filter(function(r){return(p==='all'||r.project===p)&&(t==='all'||r.type===t)&&(!q||[r.idea,r.notes,r.type,r.project].join(' ').toLowerCase().includes(q));});$('libraryCount').textContent=visible.length+' of '+items.length;$('items').innerHTML=visible.length?visible.map(function(r){var idx=items.indexOf(r),label=r.sync==='synced'?'Synced':r.sync==='local'?'On device':'Pending';var tag=r.sync==='synced'?'sent':'pending';var first=(r.idea||'').split('\n')[0];var link='';try{var url=new URL(first);if(url.protocol==='https:'||url.protocol==='http:')link='<a href="'+escapeHtml(url.href)+'" target="_blank" rel="noopener">Open source</a>';}catch(e){}return '<div class="item"><div class="row"><strong>'+escapeHtml(r.type)+' · '+escapeHtml(r.project||'Unassigned')+'</strong><span class="tag '+tag+'">'+label+'</span></div><small>'+escapeHtml(r.date||'')+'</small><p>'+escapeHtml(r.idea)+'</p>'+link+'<p class="hint">'+escapeHtml([r.start&&'Start '+r.start,r.end&&'End '+r.end,r.notes].filter(Boolean).join(' · '))+'</p><div class="actions"><button class="secondary" data-send="'+idx+'" type="button">'+(r.sync==='synced'?'Send again':'Save to cloud')+'</button><button class="outline" data-del="'+idx+'" type="button">Delete local</button></div></div>';}).join(''):'<p class="empty">No matching sources on this device.</p>';}
+$('filterProject').onchange=render;$('filterType').onchange=render;$('search').oninput=render;
+$('items').onclick=function(e){var b=e.target.closest('button');if(!b)return;if(b.hasAttribute('data-send'))submitCloud(items[Number(b.getAttribute('data-send'))]);if(b.hasAttribute('data-del')){if(confirm('Delete this device copy? Cloud entries will not be deleted.')){items.splice(Number(b.getAttribute('data-del')),1);persist();render();}}};
+$('openCloudLibrary').onclick=function(){var u=getCloud();if(!validCloud(u)){show('settings');notice('settingsNotice','Save the Google Apps Script URL first.');return;}window.open(u,'_blank','noopener');};
+$('export').onclick=function(){var blob=new Blob([JSON.stringify(items,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='Tackled-captures-backup.json';a.click();setTimeout(function(){URL.revokeObjectURL(a.href);},1000);};
+if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(function(){});
+render();
+})();
 </script></body></html>
