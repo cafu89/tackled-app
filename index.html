@@ -1,3 +1,160 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#102b22"><link rel="manifest" href="manifest.webmanifest"><title>TACKLED Capture</title><style>*{box-sizing:border-box}body{margin:0;background:#f1f5f1;color:#132a20;font:16px system-ui,sans-serif}header{background:#102b22;color:white;padding:22px 18px}header div,main{max-width:620px;margin:auto}h1{margin:0;font-size:28px}header p{margin:4px 0;color:#b5d3c0;font-size:13px}main{padding:16px}section{background:white;border-radius:15px;padding:18px;margin-bottom:14px;box-shadow:0 2px 12px #0001}h2{font-size:18px;margin:0 0 10px}label{display:block;font-size:13px;font-weight:700;margin:13px 0 6px}input,textarea,select{width:100%;padding:12px;font:inherit;border:1px solid #cbd8ce;border-radius:9px}textarea{min-height:85px}button{border:0;border-radius:9px;padding:12px 14px;font:inherit;font-weight:700;cursor:pointer}.primary{background:#26744e;color:white;width:100%;margin-top:15px}.secondary{background:#e6f0e9;color:#174b33}.hint{font-size:13px;color:#607668;line-height:1.5}.item{padding:12px 0;border-top:1px solid #e4ebe6;overflow-wrap:anywhere}.item small{color:#607668}.actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}.actions button{font-size:13px}#notice{font-size:13px;color:#176642;margin-top:9px}a{color:#1b6545}</style></head><body><header><div><h1>TACKLED<span style="color:#8bd6a8">.</span></h1><p>Share clips and ideas from your Android phone</p></div></header><main><section><h2>Capture</h2><p class="hint">Share a YouTube video or WhatsApp message to TACKLED. The shared link/text appears here automatically.</p><form id="form"><label for="type">Type</label><select id="type"><option>Source clip</option><option>Video idea</option><option>Article</option><option>Graphic idea</option><option>Research note</option><option>Other</option></select><label for="idea">Source link or idea</label><textarea id="idea" required placeholder="Share from YouTube or WhatsApp, or paste here"></textarea><label for="project">Project</label><select id="project"><option value="">Unassigned</option><option value="VID-001">Ferguson / Glazers</option><option value="VID-002">Next-gen defenders</option><option value="VID-003">Zlatan</option><option value="VID-004">Forgotten players</option><option value="VID-005">Scott McTominay</option></select><div style="display:flex;gap:10px"><div style="flex:1"><label for="start">Start</label><input id="start" placeholder="02:14"></div><div style="flex:1"><label for="end">End</label><input id="end" placeholder="02:40"></div></div><label for="notes">Notes</label><textarea id="notes" placeholder="How might this clip be used?"></textarea><button class="primary" type="submit">Save to capture inbox</button><p id="notice" role="status"></p></form></section><section><h2>Google Sheets handoff</h2><p class="hint">Paste your existing Google Apps Script web app URL below. Each saved item can then open your cloud capture form pre-filled, where you confirm Save to cloud. This version does not silently upload to Sheets.</p><label for="cloud">Google Apps Script web app URL</label><input id="cloud" type="url" placeholder="https://script.google.com/macros/s/.../exec"><button class="secondary" id="savecloud" style="margin-top:8px">Save cloud link</button></section><section><h2>Saved on this device <span id="count"></span></h2><p class="hint">Items remain in this browser's local storage until deleted. Back up regularly; local data can be lost if browser storage is cleared.</p><div id="items"></div><button class="secondary" id="export">Export backup JSON</button></section></main><script>
-(()=>{const $=id=>document.getElementById(id);let items=[];try{items=JSON.parse(localStorage.getItem('tackled-shares')||'[]')}catch{}$('cloud').value=localStorage.getItem('tackled-cloud')||'';const p=new URLSearchParams(location.search), shared=[p.get('url'),p.get('text'),p.get('title')].filter(Boolean).join('\n');if(shared){$('idea').value=shared;history.replaceState(null,'',location.pathname)}const save=()=>localStorage.setItem('tackled-shares',JSON.stringify(items));const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));function render(){$('count').textContent=`(${items.length})`;$('items').innerHTML=items.length?items.map((r,i)=>`<div class="item"><strong>${esc(r.type)} · ${esc(r.project||'Unassigned')}</strong><br><small>${esc(r.date)}</small><div>${esc(r.idea).replace(/\n/g,'<br>')}</div><small>${esc([r.start,r.end,r.notes].filter(Boolean).join(' · '))}</small><div class="actions"><button class="secondary" data-send="${i}">Open in cloud form</button><button class="secondary" data-delete="${i}">Delete</button></div></div>`).join(''):'<p class="hint">No captures yet.</p>'}render();$('form').onsubmit=e=>{e.preventDefault();items.unshift({date:new Date().toISOString(),type:$('type').value,idea:$('idea').value,project:$('project').value,start:$('start').value,end:$('end').value,notes:$('notes').value});save();render();$('idea').value='';$('start').value='';$('end').value='';$('notes').value='';$('notice').textContent='Saved on this device. Use Open in cloud form to send to Google Sheets.'};$('savecloud').onclick=()=>{const u=$('cloud').value.trim();if(u&&!/^https:\/\/script\.google\.com\/macros\/s\//.test(u)){alert('Enter a valid Google Apps Script deployment URL');return}localStorage.setItem('tackled-cloud',u);alert('Cloud form link saved')};$('items').onclick=e=>{const send=e.target.dataset.send,del=e.target.dataset.delete;if(send!==undefined){const u=$('cloud').value.trim();if(!u){alert('Add your Google Apps Script web app URL first');return}const r=items[Number(send)];const q=new URL(u);q.searchParams.set('text',r.idea);q.searchParams.set('type',r.type);q.searchParams.set('project',r.project);q.searchParams.set('start',r.start);q.searchParams.set('end',r.end);q.searchParams.set('notes',r.notes);window.open(q.toString(),'_blank','noopener')}if(del!==undefined&&confirm('Delete this local capture?')){items.splice(Number(del),1);save();render()}};$('export').onclick=()=>{const blob=new Blob([JSON.stringify(items,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='tackled-captures-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});})();
+<!DOCTYPE html><html><head><base target="_top"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>
+:root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#f3f6f3;color:#14291e}*{box-sizing:border-box}body{margin:0}header{background:#112a23;color:white;padding:22px 18px}header>div,main{max-width:640px;margin:auto}h1{margin:0;letter-spacing:.05em;font-size:27px}header p{color:#bed6c8;margin:5px 0;font-size:13px}main{padding:14px 12px 55px}.panel{background:white;border-radius:16px;padding:18px;margin-bottom:13px;box-shadow:0 2px 10px #112a230a}h2{font-size:18px;margin:0 0 12px}label{display:block;font-weight:650;font-size:13px;margin:13px 0 6px}input,select,textarea{width:100%;padding:12px;border:1px solid #c8d6ce;border-radius:9px;font:inherit;font-size:16px;background:white}textarea{min-height:80px;resize:vertical}.pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{border:0;border-radius:10px;padding:12px 15px;font-size:14px;font-weight:700;cursor:pointer}.primary{background:#276a4a;color:white;width:100%;margin-top:16px}.secondary{background:#e5efe8;color:#194a35}.toolbar{display:flex;gap:8px;align-items:center;justify-content:space-between}.entry{border-top:1px solid #e7eee9;padding:14px 0;overflow-wrap:anywhere}.entry:first-child{border:0}.entry p{margin:5px 0;font-size:13px}.entry small{color:#687e70}.entry a{color:#206d4b}.entry select{font-size:13px;width:auto;padding:7px;margin-top:8px}.muted{color:#6a8071;font-size:12px}#message{font-size:13px;min-height:20px;margin-top:8px}.good{color:#276a4a}.bad{color:#a42f2f}.linkbtn{background:none;color:#276a4a;padding:5px;float:right}
+</style></head><body><header><div><h1>Tackled.</h1><p>Mobile capture · synced to your Google Sheet</p></div></header><main><section class="panel"><h2>Quick capture</h2><form id="form"><label for="type">Capture type</label><select id="type"><option>Source clip</option><option>Video idea</option><option>Article</option><option>Graphic idea</option><option>Research note</option><option>Other</option></select><label for="idea">Link or idea</label><textarea id="idea" required placeholder="Paste a YouTube link or jot down an idea"></textarea><button type="button" class="linkbtn" id="paste">Paste clipboard</button><label for="project">Video project</label><select id="project"><option value="">Unassigned / new idea</option></select><div class="pair"><div><label for="start">Start timestamp</label><input id="start" placeholder="02:14"></div><div><label for="end">End timestamp</label><input id="end" placeholder="02:40"></div></div><label for="notes">Notes / how to use it</label><textarea id="notes" placeholder="Strong defensive recovery; use in chapter 3"></textarea><button type="submit" id="save" class="primary">Save to cloud</button><div id="message" role="status"></div></form></section><section class="panel"><div class="toolbar"><h2>Saved sources</h2><button class="secondary" id="refresh">Refresh</button></div><p class="muted">Latest 300 entries · Edit projects in the Projects sheet · All records are in Google Sheets</p><label for="libraryProject">Filter by project</label><select id="libraryProject"><option value="all">All projects</option></select><label for="librarySearch">Search sources and notes</label><input id="librarySearch" placeholder="Search the latest 300 captures"><div id="entries">Loading…</div></section></main><script>
+(function () {
+  'use strict';
+  function el(id) { return document.getElementById(id); }
+  function message(text, ok) {
+    el('message').textContent = text;
+    el('message').className = ok ? 'good' : 'bad';
+  }
+  function failure(error) {
+    message(error && error.message ? error.message : String(error), false);
+  }
+  function text(parent, tag, value) {
+    var child = document.createElement(tag);
+    child.textContent = value == null ? '' : String(value);
+    parent.appendChild(child);
+    return child;
+  }
+  var cachedCaptures = [];
+  function render(list) {
+    list = (list || []).filter(function(item) {
+      var project = el('libraryProject').value;
+      var query = el('librarySearch').value.toLowerCase().trim();
+      return (project === 'all' || item.project === project) && (!query || [item.idea,item.notes,item.projectName,item.type].join(' ').toLowerCase().indexOf(query) >= 0);
+    });
+    var area = el('entries');
+    area.textContent = '';
+    if (!list || !list.length) {
+      text(area, 'p', 'No captures yet.');
+      return;
+    }
+    list.forEach(function (item) {
+      var row = document.createElement('div');
+      row.className = 'entry';
+      text(row, 'strong', (item.type || 'Source') + ' · ' + (item.projectName || 'Unassigned'));
+      text(row, 'small', item.date || '');
+      text(row, 'p', item.idea || '');
+      var link = String(item.idea || '').trim();
+      if (link.indexOf('https://') === 0 || link.indexOf('http://') === 0) {
+        var a = text(row, 'a', 'Open source');
+        a.href = link;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+      }
+      text(row, 'p', [item.start ? 'Start ' + item.start : '', item.end ? 'End ' + item.end : '', item.notes || ''].filter(Boolean).join(' · '));
+      var select = document.createElement('select');
+      select.setAttribute('data-id', item.id || '');
+      ['Saved', 'Downloaded', 'In edit', 'Used', 'Archived'].forEach(function (status) {
+        var option = document.createElement('option');
+        option.value = status;
+        option.textContent = status;
+        option.selected = item.status === status;
+        select.appendChild(option);
+      });
+      row.appendChild(select);
+      area.appendChild(row);
+    });
+  }
+  function load() {
+    google.script.run.withSuccessHandler(function(list) { cachedCaptures = list || []; render(cachedCaptures); }).withFailureHandler(failure).captures();
+  }
+  var sharedProject = '';
+  function loadProjects() {
+    google.script.run.withSuccessHandler(function (projects) {
+      (projects || []).forEach(function (project) {
+        var option = document.createElement('option');
+        option.value = project.id;
+        option.textContent = project.id + ' · ' + project.name;
+        el('project').appendChild(option);
+        var filterOption = document.createElement('option');
+        filterOption.value = project.id;
+        filterOption.textContent = project.id + ' · ' + project.name;
+        el('libraryProject').appendChild(filterOption);
+      });
+      if (sharedProject) el('project').value = sharedProject;
+    }).withFailureHandler(failure).projects();
+  }
+  el('form').addEventListener('submit', function (event) {
+    event.preventDefault();
+    var save = el('save');
+    save.disabled = true;
+    message('Saving…', true);
+    var record = {
+      type: el('type').value,
+      idea: el('idea').value,
+      project: el('project').value,
+      start: el('start').value,
+      end: el('end').value,
+      notes: el('notes').value
+    };
+    google.script.run.withSuccessHandler(function () {
+      save.disabled = false;
+      message('Saved to Google Sheets ✓', true);
+      el('idea').value = '';
+      el('start').value = '';
+      el('end').value = '';
+      el('notes').value = '';
+      load();
+    }).withFailureHandler(function (error) {
+      save.disabled = false;
+      failure(error);
+    }).saveCapture(record);
+  });
+  el('entries').addEventListener('change', function (event) {
+    var target = event.target;
+    if (!target || !target.hasAttribute('data-id')) return;
+    target.disabled = true;
+    google.script.run.withSuccessHandler(function () {
+      target.disabled = false;
+    }).withFailureHandler(function (error) {
+      target.disabled = false;
+      failure(error);
+    }).updateStatus(target.getAttribute('data-id'), target.value);
+  });
+  el('refresh').addEventListener('click', load);
+  el('libraryProject').addEventListener('change', function() { render(cachedCaptures); });
+  el('librarySearch').addEventListener('input', function() { render(cachedCaptures); });
+  el('paste').addEventListener('click', function () {
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      message('Long-press the link field and select Paste.', false);
+      return;
+    }
+    navigator.clipboard.readText().then(function (value) {
+      el('idea').value = value;
+    }).catch(function () {
+      message('Long-press the link field and select Paste.', false);
+    });
+  });
+  // Google Apps Script runs the interface inside a sandboxed iframe.
+  // google.script.url retrieves the ORIGINAL /exec URL's query parameters.
+  function applySharedParameters(params) {
+    if (!params) return;
+    if (params.text || params.url) el('idea').value = params.text || params.url;
+    if (params.type) {
+      var types = el('type').options;
+      for (var i = 0; i < types.length; i++) {
+        if (types[i].value === params.type) el('type').value = params.type;
+      }
+    }
+    if (params.start) el('start').value = params.start;
+    if (params.end) el('end').value = params.end;
+    if (params.notes) el('notes').value = params.notes;
+    if (params.project) {
+      sharedProject = params.project;
+      el('project').value = sharedProject;
+    }
+  }
+  if (typeof google !== 'undefined' && google.script && google.script.url) {
+    google.script.url.getLocation(function (location) {
+      applySharedParameters(location && location.parameter);
+    });
+  } else {
+    var params = new URLSearchParams(window.location.search);
+    applySharedParameters(Object.fromEntries(params.entries()));
+  }
+  loadProjects();
+  load();
+}());
 </script></body></html>
